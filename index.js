@@ -22,4 +22,4 @@ bot.once("ready", () => {
 });
 
 // Token boş, yani bot connect olmayacak (safety first)
-bot.login("DISCORD_BOT_TOKEN_GIRME_BU_KOD_TEST_ICIN");
+//bot.login("DISCORD_BOT_TOKEN_GIRME_BU_KOD_TEST_ICIN");
