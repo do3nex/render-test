@@ -1,11 +1,11 @@
 const express = require("express");
-const { scrape } = require("./scrapex");
+const { scrape } = require("./scrape");
 const app = express();
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 3000;
 
 app.get("/api/channel", (req, res) => {
-    scrape(res);
+    scrape(req,res);
 });
 
 app.get("/", (req, res) => {
