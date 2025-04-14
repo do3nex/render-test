@@ -1,75 +1,85 @@
 const express = require('express');
-const axios = require('axios');
-const cheerio = require('cheerio');
+const puppeteer = require('puppeteer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const puppeteer = require('puppeteer');
-
 app.get('/api/channel', async (req, res) => {
-  const channelId = req.query.id;
-  if (!channelId) return res.status(400).json({ error: 'channelID is required' });
+    const channelId = req.query.id;
+    if (!channelId) {
+        console.log('❌ channelID parametresi eksik.');
+        return res.status(400).json({ error: 'channelID is required' });
+    }
 
-  try {
-    const url = `https://www.youtube.com/channel/${channelId}/videos`;
+    try {
+        const url = `https://www.youtube.com/channel/${channelId}/videos`;
+        console.log(`🌐 YouTube kanalına gidiliyor: ${url}`);
 
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+        const browser = await puppeteer.launch({
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        });
 
-    const page = await browser.newPage();
-    await page.goto(url, { waitUntil: 'networkidle2' });
+        const page = await browser.newPage();
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-    // ytInitialData'yı sayfadan al
-    const ytInitialData = await page.evaluate(() => {
-      const scripts = Array.from(document.querySelectorAll('script'));
-      for (let script of scripts) {
-        if (script.textContent.includes('var ytInitialData =')) {
-          const raw = script.textContent;
-          const jsonStr = raw.split('var ytInitialData =')[1].split('};')[0] + '}';
-          return JSON.parse(jsonStr);
-        }
-      }
-      return null;
-    });
+        await page.goto(url, { waitUntil: 'networkidle2' });
+        console.log('✅ Sayfa yüklendi.');
 
-    await browser.close();
+        await page.evaluate(() => {
+            window.scrollTo(0, 2000);
+        });
 
-    if (!ytInitialData) return res.status(500).json({ error: 'ytInitialData not found' });
+        console.log('🔽 Sayfa scroll edildi, daha fazla video yüklendi.');
 
-    const videoItems = ytInitialData.contents
-      ?.twoColumnBrowseResultsRenderer
-      ?.tabs?.[1]?.tabRenderer?.content
-      ?.sectionListRenderer?.contents?.[0]
-      ?.itemSectionRenderer?.contents?.[0]
-      ?.gridRenderer?.items;
+        await page.waitForSelector('#contents ytd-rich-item-renderer', { timeout: 10000 });
+        console.log('✅ Video grid bulundu.');
 
-    if (!videoItems) return res.status(404).json({ error: 'No videos found' });
+        const videos = await page.evaluate(() => {
+            const nodes = Array.from(document.querySelectorAll('#contents ytd-rich-item-renderer'));
 
-    const videos = videoItems
-      .filter(v => v.gridVideoRenderer && !v.gridVideoRenderer.thumbnailOverlays.some(o => o.thumbnailOverlayTimeStatusRenderer?.style === 'SHORTS'))
-      .slice(0, 10)
-      .map(v => {
-        const vid = v.gridVideoRenderer;
-        return {
-          videoID: vid.videoId,
-          title: vid.title.runs[0].text,
-          duration: vid.thumbnailOverlays[0]?.thumbnailOverlayTimeStatusRenderer?.text?.simpleText || null,
-          channelName: vid.shortBylineText?.runs[0]?.text || null,
-          profilePicture: vid.channelThumbnail?.thumbnails?.[0]?.url || null,
-        };
-      });
+            const data = nodes.map(node => {
+                const title = node.querySelector('#video-title')?.textContent?.trim();
+                const isShorts = node.querySelector('a[href*="/shorts/"]') !== null;
+                const duration = node.querySelector('span.ytd-thumbnail-overlay-time-status-renderer')?.textContent?.trim();
 
-    res.json(videos);
-  } catch (err) {
-    console.error('🔥 Scraping Error:', err.message);
-    res.status(500).json({ error: 'Scraping failed 😓' });
-  }
+                const channelName = document.querySelector('h1.dynamic-text-view-model-wiz__h1')?.innerText?.trim();
+                const profilePicture = document.querySelector('img[src*="yt3.googleusercontent.com"]')?.src;
+
+                const thumbnail = node.querySelector('img')?.src;
+                let videoID = null;
+                if (thumbnail && thumbnail.includes('/vi/')) {
+                    const match = thumbnail.match(/\/vi\/([^/]+)\//);
+                    if (match && match[1]) videoID = match[1];
+                }
+
+                return {
+                    videoID,
+                    title,
+                    duration,
+
+                    channel: {
+                        channelName,
+                        profilePicture
+                    }
+                };
+            });
+
+            return data;
+        });
+
+        await browser.close();
+
+        const filtered = videos.filter(v => !v.isShorts && v.videoID).slice(0, 10);
+
+        console.log(`🎯 ${filtered.length} adet video bulundu (Shorts hariç).`);
+        res.json(filtered.map(({ isShorts, ...rest }) => rest));
+    } catch (err) {
+        console.error('🔥 Hata oluştu:', err);
+        res.status(500).json({ error: 'Scraping failed 😓', details: err.message });
+    }
 });
 
-
 app.listen(PORT, () => {
-  console.log(`🚀 API started on port ${PORT}`);
+    console.log(`🚀 Server başladı: http://localhost:${PORT}`);
 });
