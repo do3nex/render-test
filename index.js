@@ -5,38 +5,45 @@ const cheerio = require('cheerio');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const puppeteer = require('puppeteer');
+
 app.get('/api/channel', async (req, res) => {
   const channelId = req.query.id;
   if (!channelId) return res.status(400).json({ error: 'channelID is required' });
 
   try {
     const url = `https://www.youtube.com/channel/${channelId}/videos`;
-    const { data: html } = await axios.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0',
-      }
+
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
 
-    const $ = cheerio.load(html);
-    const scripts = $('script').toArray();
-    let ytInitialData;
+    const page = await browser.newPage();
+    await page.goto(url, { waitUntil: 'networkidle2' });
 
-    for (const script of scripts) {
-      const content = $(script).html();
-      if (content && content.includes('var ytInitialData =')) {
-        const jsonStr = content.split('var ytInitialData =')[1].split(';</script>')[0].trim();
-        ytInitialData = JSON.parse(jsonStr);
-        break;
+    // ytInitialData'yı sayfadan al
+    const ytInitialData = await page.evaluate(() => {
+      const scripts = Array.from(document.querySelectorAll('script'));
+      for (let script of scripts) {
+        if (script.textContent.includes('var ytInitialData =')) {
+          const raw = script.textContent;
+          const jsonStr = raw.split('var ytInitialData =')[1].split('};')[0] + '}';
+          return JSON.parse(jsonStr);
+        }
       }
-    }
+      return null;
+    });
 
-    if (!ytInitialData) return res.status(500).json({ error: 'Failed to parse data' });
+    await browser.close();
+
+    if (!ytInitialData) return res.status(500).json({ error: 'ytInitialData not found' });
 
     const videoItems = ytInitialData.contents
       ?.twoColumnBrowseResultsRenderer
-      ?.tabs[1]?.tabRenderer?.content
-      ?.sectionListRenderer?.contents[0]
-      ?.itemSectionRenderer?.contents[0]
+      ?.tabs?.[1]?.tabRenderer?.content
+      ?.sectionListRenderer?.contents?.[0]
+      ?.itemSectionRenderer?.contents?.[0]
       ?.gridRenderer?.items;
 
     if (!videoItems) return res.status(404).json({ error: 'No videos found' });
@@ -57,10 +64,11 @@ app.get('/api/channel', async (req, res) => {
 
     res.json(videos);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Something went wrong, fam 😓' });
+    console.error('🔥 Scraping Error:', err.message);
+    res.status(500).json({ error: 'Scraping failed 😓' });
   }
 });
+
 
 app.listen(PORT, () => {
   console.log(`🚀 API started on port ${PORT}`);
