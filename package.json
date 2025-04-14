@@ -1,16 +1,15 @@
 {
-  "name": "youtube-channel-scraper",
+  "name": "yt-scraper",
   "version": "1.0.0",
-  "description": "No-API YouTube Channel Scraping API (Shorts hariç son 10 video)",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
-  "keywords": ["youtube", "scraping", "api", "channel", "render", "shorts"],
-  "author": "Senin İsmin (Big Boss 😎)",
-  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
-  "express": "^4.18.2",
-  "puppeteer": "^21.3.8"
-}
+    "express": "^4.18.2",
+    "puppeteer": "^22.8.2"
+  }
 }
