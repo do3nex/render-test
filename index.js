@@ -21,8 +21,12 @@ app.get('/api/channel', async (req, res) => {
         });
 
         const page = await browser.newPage();
-
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        const pageContent = await page.content();
+        console.log("📄 Sayfa içeriği ilk 1000 karakter:", pageContent.slice(0, 1000));
+        
+        await page.setExtraHTTPHeaders({
+            'Accept-Language': 'en-US,en;q=0.9',
+          });
 
         console.log('🧭 Sayfa açılıyor...');
         await page.goto(url, { waitUntil: 'networkidle2' });
@@ -72,6 +76,7 @@ app.get('/api/channel', async (req, res) => {
                 return { error: true, message: e.message };
             }
         });
+        console.log("📦 Gelen veri:", typeof videos, Array.isArray(videos) ? videos.length + " video var" : videos);
 
         await browser.close();
 
