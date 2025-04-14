@@ -21,8 +21,10 @@ app.get('/api/channel', async (req, res) => {
         });
 
         const page = await browser.newPage();
+
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
+        console.log('🧭 Sayfa açılıyor...');
         await page.goto(url, { waitUntil: 'networkidle2' });
         console.log('✅ Sayfa yüklendi.');
 
@@ -36,43 +38,55 @@ app.get('/api/channel', async (req, res) => {
         console.log('✅ Video grid bulundu.');
 
         const videos = await page.evaluate(() => {
-            const nodes = Array.from(document.querySelectorAll('#contents ytd-rich-item-renderer'));
-
-            const data = nodes.map(node => {
-                const title = node.querySelector('#video-title')?.textContent?.trim();
-                const isShorts = node.querySelector('a[href*="/shorts/"]') !== null;
-                const duration = node.querySelector('span.ytd-thumbnail-overlay-time-status-renderer')?.textContent?.trim();
-
+            try {
+                const nodes = Array.from(document.querySelectorAll('#contents ytd-rich-item-renderer'));
                 const channelName = document.querySelector('h1.dynamic-text-view-model-wiz__h1')?.innerText?.trim();
                 const profilePicture = document.querySelector('img[src*="yt3.googleusercontent.com"]')?.src;
 
-                const thumbnail = node.querySelector('img')?.src;
-                let videoID = null;
-                if (thumbnail && thumbnail.includes('/vi/')) {
-                    const match = thumbnail.match(/\/vi\/([^/]+)\//);
-                    if (match && match[1]) videoID = match[1];
-                }
+                const data = nodes.map(node => {
+                    const title = node.querySelector('#video-title')?.textContent?.trim();
+                    const isShorts = node.querySelector('a[href*="/shorts/"]') !== null;
+                    const duration = node.querySelector('span.ytd-thumbnail-overlay-time-status-renderer')?.textContent?.trim();
 
-                return {
-                    videoID,
-                    title,
-                    duration,
-
-                    channel: {
-                        channelName,
-                        profilePicture
+                    const thumbnail = node.querySelector('img')?.src;
+                    let videoID = null;
+                    if (thumbnail && thumbnail.includes('/vi/')) {
+                        const match = thumbnail.match(/\/vi\/([^/]+)\//);
+                        if (match && match[1]) videoID = match[1];
                     }
-                };
-            });
 
-            return data;
+                    return {
+                        videoID,
+                        title,
+                        duration,
+                        isShorts,
+                        channel: {
+                            channelName,
+                            profilePicture
+                        }
+                    };
+                });
+
+                return data;
+            } catch (e) {
+                return { error: true, message: e.message };
+            }
         });
 
         await browser.close();
 
+        if (!Array.isArray(videos)) {
+            console.error('❌ evaluate sonucu array değil:', videos);
+            return res.status(500).json({ error: 'Evaluate error', raw: videos });
+        }
+
         const filtered = videos.filter(v => !v.isShorts && v.videoID).slice(0, 10);
 
         console.log(`🎯 ${filtered.length} adet video bulundu (Shorts hariç).`);
+        filtered.forEach((v, i) => {
+            console.log(`#${i + 1}: ${v.title} [${v.videoID}]`);
+        });
+
         res.json(filtered.map(({ isShorts, ...rest }) => rest));
     } catch (err) {
         console.error('🔥 Hata oluştu:', err);
