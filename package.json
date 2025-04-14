@@ -1,13 +1,17 @@
 {
-  "name": "uptime-webhook-server",
+  "name": "youtube-channel-scraper",
   "version": "1.0.0",
-  "description": "Webhook'a uptime atan ve / üzerinden uptime gösteren Express sunucu",
+  "description": "No-API YouTube Channel Scraping API (Shorts hariç son 10 video)",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
+  "keywords": ["youtube", "scraping", "api", "channel", "render", "shorts"],
+  "author": "Senin İsmin (Big Boss 😎)",
+  "license": "MIT",
   "dependencies": {
     "axios": "^1.6.8",
-    "express": "^4.18.2"
+    "cheerio": "^1.0.0-rc.12",
+    "express": "^4.18.4"
   }
 }
