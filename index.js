@@ -1,43 +1,67 @@
 const express = require('express');
 const axios = require('axios');
+const cheerio = require('cheerio');
 
 const app = express();
-const port = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 
-const WEBHOOK_URL = "https://discord.com/api/webhooks/1361074409020063955/2dYg2CajzR5VAr9CnhvELY1hWFmSknguToevQ8VWIvTHA0uI1nVmMq-NHytegu7ZBwYX";
+app.get('/api/channel', async (req, res) => {
+  const channelId = req.query.id;
+  if (!channelId) return res.status(400).json({ error: 'channelID is required' });
 
-const startTime = Date.now();
+  try {
+    const url = `https://www.youtube.com/channel/${channelId}/videos`;
+    const { data: html } = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+      }
+    });
 
-// Uptime formatlayan fonksiyon
-const getUptimeMessage = () => {
-  const now = Date.now();
-  const uptimeSeconds = Math.floor((now - startTime) / 1000);
+    const $ = cheerio.load(html);
+    const scripts = $('script').toArray();
+    let ytInitialData;
 
-  const hours = Math.floor(uptimeSeconds / 3600);
-  const minutes = Math.floor((uptimeSeconds % 3600) / 60);
-  const seconds = uptimeSeconds % 60;
+    for (const script of scripts) {
+      const content = $(script).html();
+      if (content && content.includes('var ytInitialData =')) {
+        const jsonStr = content.split('var ytInitialData =')[1].split(';</script>')[0].trim();
+        ytInitialData = JSON.parse(jsonStr);
+        break;
+      }
+    }
 
-  return `**Uptime: ${hours ? hours + " saat," : ""} ${minutes} dakika, ${seconds} saniye**`;
-};
+    if (!ytInitialData) return res.status(500).json({ error: 'Failed to parse data' });
 
-// Webhook'a mesaj atan fonksiyon
-const sendPing = () => {
-  const content = getUptimeMessage();
+    const videoItems = ytInitialData.contents
+      ?.twoColumnBrowseResultsRenderer
+      ?.tabs[1]?.tabRenderer?.content
+      ?.sectionListRenderer?.contents[0]
+      ?.itemSectionRenderer?.contents[0]
+      ?.gridRenderer?.items;
 
-  axios.post(WEBHOOK_URL, { content })
-    .then(() => console.log("Webhook ping gitti."))
-    .catch(err => console.error("Ping atılamadı:", err.response?.data || err.message));
-};
+    if (!videoItems) return res.status(404).json({ error: 'No videos found' });
 
-// Her 20 saniyede bir webhook'a gönder
-setInterval(sendPing, 20000);
+    const videos = videoItems
+      .filter(v => v.gridVideoRenderer && !v.gridVideoRenderer.thumbnailOverlays.some(o => o.thumbnailOverlayTimeStatusRenderer?.style === 'SHORTS'))
+      .slice(0, 10)
+      .map(v => {
+        const vid = v.gridVideoRenderer;
+        return {
+          videoID: vid.videoId,
+          title: vid.title.runs[0].text,
+          duration: vid.thumbnailOverlays[0]?.thumbnailOverlayTimeStatusRenderer?.text?.simpleText || null,
+          channelName: vid.shortBylineText?.runs[0]?.text || null,
+          profilePicture: vid.channelThumbnail?.thumbnails?.[0]?.url || null,
+        };
+      });
 
-// GET isteği geldiğinde aynı mesajı dön
-app.get("/", (req, res) => {
-  res.send(getUptimeMessage());
+    res.json(videos);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong, fam 😓' });
+  }
 });
 
-// Express server'ı başlat
-app.listen(port, () => {
-  console.log(`Express server aktif: http://localhost:${port}`);
+app.listen(PORT, () => {
+  console.log(`🚀 API started on port ${PORT}`);
 });
